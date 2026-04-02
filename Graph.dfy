@@ -4,22 +4,18 @@ module Graph {
     u < V
   }
 
-  predicate ValidEdge(V: nat, u: nat, v: nat)
-  {
-    u < V && v < V
-  }
-  
-  predicate ValidCapacityShape(V: nat, capacity: array2<nat>)
-  {
-    capacity.Length0 == V && 
-    capacity.Length1 == V
+  predicate NodeSequenceHasNoDuplicates(p: seq<nat>) {
+    forall i, j :: 0 <= i < |p| && 0 <= j < |p| && i != j ==> p[i] != p[j]
   }
 
-  predicate ValidGraph(V: nat, s: nat, t: nat, capacity: array2<nat>)
-    reads capacity
+  predicate ValidGraph(V: nat, s: nat, t: nat)
   {
     V >= 2 &&
-    ValidNode(V, s) && ValidNode(V, t) && s != t &&
-    ValidCapacityShape(V, capacity)
+    ValidNode(V, s) && ValidNode(V, t) && s != t
   }
+
+  lemma Lemma_SimplePathHasBoundedLength(V: nat, p: seq<nat>)
+    requires NodeSequenceHasNoDuplicates(p)
+    requires forall u :: 0 <= u < |p| ==> ValidNode(V, p[u])
+    ensures |p| <= V
 }
