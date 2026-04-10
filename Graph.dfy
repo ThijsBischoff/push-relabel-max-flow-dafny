@@ -1,7 +1,7 @@
 module Graph {
-  predicate ValidNode(V: nat, u: nat)
+  predicate ValidNode(V: nat, v: nat)
   {
-    u < V
+    v < V
   }
 
   predicate NodeSequenceHasNoDuplicates(p: seq<nat>) {
@@ -16,6 +16,6 @@ module Graph {
 
   lemma Lemma_SimplePathHasBoundedLength(V: nat, p: seq<nat>)
     requires NodeSequenceHasNoDuplicates(p)
-    requires forall u :: 0 <= u < |p| ==> ValidNode(V, p[u])
+    requires forall i :: 0 <= i < |p| ==> ValidNode(V, p[i])
     ensures |p| <= V
 }
