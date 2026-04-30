@@ -1,140 +1,170 @@
 include "Graph.dfy"
 include "Flow.dfy"
 
-module Algorithm {
-  import Graph
-  import FlowGraph
+module PushRelabel {
+  import opened Graph
+  import opened FlowGraph
+
+  type Excess = e: seq<nat> | |e| == V witness seq(V, _ => 0)
+  type Labeling = d: seq<nat> | |d| == V witness seq(V, _ => 0)
+  type Buckets = b: seq<set<Node>> | |b| == 2 * V witness seq(2 * V, _ => {})
+  type MaxHeight = max_height: int | -1 <= max_height < 2 * V witness -1
+
+  predicate ValidExcess(s: Node, f: Flow, e: Excess)
+  {
+    forall v: Node | v != s :: e[v] == SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)
+  }
+
+  predicate ValidLabeling(s: Node, t: Node, c: Capacity, f: Flow, d: Labeling)
+    requires ValidCapacityConstraint(c, f)
+  {
+    d[s] == V && d[t] == 0 &&
+    (forall v: Node, w: Node | (ResidualCapacity(c, f, v, w) > 0) :: d[v] <= d[w] + 1)
+  }
+
+  predicate ValidBuckets(s: Node, t: Node, e: Excess, d: Labeling, max_height: MaxHeight, buckets: Buckets)
+  {
+    // max_height is the upper bound
+    (forall v: Node | (v != s && v != t && e[v] > 0) :: d[v] <= max_height) &&
+    // If a non terminal node is active it must be in the bucket of its current height
+    (forall v: Node | (v != s && v != t && e[v] > 0) :: v in buckets[d[v]]) &&
+    // If a node is in a bucket it must be active and cannot be a terminal node
+    (forall h: nat, v: Node | (0 <= h < 2 * V && v in buckets[h]) :: (e[v] > 0 && v != s && v != t)) &&
+    // If a node is in a bucket it must have the height of that bucket
+    (forall h: nat, v: Node | (0 <= h < 2 * V && v in buckets[h]) :: d[v] == h)
+  }
+
+  predicate ValidNonnegativityConstraint(s: Node, f: Flow)
+  {
+    forall v: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)} | v != s ::
+      SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1) >= 0
+  }
+
+  predicate ValidPreflow(s: Node, c: Capacity, f: Flow)
+  {
+    ValidCapacityConstraint(c, f) && ValidSkewSymmetryConstraint(f) && ValidNonnegativityConstraint(s, f)
+  }
+
+  lemma LemmaFlowSumAfterPush(f_old: Flow, f_new: Flow, v: Node, w: Node, delta: int, N: nat)
+    requires N < V
+
+    // mutated flow on targeted edge
+    requires f_new[v][w] == f_old[v][w] + delta
+    requires f_new[w][v] == f_old[w][v] - delta
+
+    // all other edges have the same flow
+    requires forall x: Node, y: Node | ((x, y) != (v, w) && (x, y) != (w, v)) :: f_new[x][y] == f_old[x][y]
+
+    // ensures all nodes that are not touched have the SumFlowIn
+    ensures forall k: Node | k != v && k != w :: SumFlowInOnEdgesUpToEdgeUV(f_new, k, N) == SumFlowInOnEdgesUpToEdgeUV(f_old, k, N)
+    // ensures SumFlowIn is correctly updated for v and w
+    ensures SumFlowInOnEdgesUpToEdgeUV(f_new, v, N) == SumFlowInOnEdgesUpToEdgeUV(f_old, v, N) - (if N >= w then delta else 0)
+    ensures SumFlowInOnEdgesUpToEdgeUV(f_new, w, N) == SumFlowInOnEdgesUpToEdgeUV(f_old, w, N) + (if N >= v then delta else 0)
+  {
+    if N == 0 {
+
+    } else {
+      LemmaFlowSumAfterPush(f_old, f_new, v, w, delta, N - 1);
+    }
+  }
+
+  lemma Lemma_ActiveVertexHasPathToSource(s: Node, t: Node, c: Capacity, f: Flow, e: Excess, v: Node)
+    requires v != s && v != t
+    requires e[v] > 0
+    requires ValidPreflow(s, c, f)
+    requires ValidExcess(s, f, e)
+    ensures exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == v && p[|p|-1] == s
+
+  lemma Lemma_PathTelescopingHeight(s: Node, t: Node, c: Capacity, f: Flow, d: Labeling, p: Path)
+    requires |p| >= 1
+    requires ValidPreflow(s, c, f)
+    requires ValidLabeling(s, t, c, f, d)
+    requires IsResidualPath(c, f, p)
+
+    ensures d[p[0]] <= d[p[|p| - 1]] + |p| - 1
 
   class PushRelabel {
-    const V: nat
-    const s: nat
-    const t: nat
-    const capacity: array2<nat>
+    const s: Node
+    const t: Node
+    const c: Capacity
+    var f: Flow
 
-    var flow: array2<int>
-    var height: array<nat>
-    var excess: array<int>
-
-    var buckets: array<set<nat>>
-    var max_height: int
-
-    predicate ValidBucketsStructure()
-      reads this
-    {
-      buckets.Length == 2 * V
-    }
-
-    predicate ValidBuckets()
-      reads this, height, excess, buckets
-      requires FlowGraph.ValidHeightShape(V, height)
-      requires FlowGraph.ValidExcessShape(V, excess)
-      requires ValidBucketsStructure()
-    {
-      -1 <= max_height < 2 * V &&
-      // max_height is the upper bound
-      (forall v :: (0 <= v < V && v!= s && v != t && excess[v] > 0) ==> height[v] <= max_height) &&
-      // If a non terminal node is active it must be in the bucket of its current height
-      (forall v :: (0 <= v < V && v != s && v != t && excess[v] > 0) ==> v in buckets[height[v]]) &&
-      // If a node is in a bucket it must be active and cannot be a terminal node
-      (forall h, v :: (0 <= h < 2 * V && 0 <= v < V && v in buckets[h]) ==> (excess[v] > 0 && v != s && v != t)) &&
-      // If a node is in a bucket it must have the height of that bucket
-      (forall h, v :: (0 <= h < 2 * V && 0 <= v < V && v in buckets[h]) ==> height[v] == h)
-    }
-
-    predicate ValidStructure()
-      reads this
-    {
-      Graph.ValidGraph(V, s, t) &&
-      FlowGraph.ValidFlowMatrixShape(V, flow) &&
-      FlowGraph.ValidCapacityMatrixShape(V, capacity) &&
-      FlowGraph.ValidHeightShape(V, height) &&
-      FlowGraph.ValidExcessShape(V, excess) &&
-      ValidBucketsStructure()
-    }
+    var e: Excess
+    var d: Labeling
+    var max_height: MaxHeight
+    var buckets: Buckets
 
     predicate Valid()
-      reads this, capacity, flow, height, excess, buckets
+      reads this
     {
-      ValidStructure() &&
-      FlowGraph.ValidPreflow(V, s, t, capacity, flow) &&
-      FlowGraph.ValidExcess(V, s, t, capacity, flow, excess) &&
-      FlowGraph.ValidLabeling(V, s, t, capacity, flow, height) &&
-      ValidBuckets()
+      ValidPreflow(s, c, f) &&
+      ValidExcess(s, f, e) &&
+      ValidLabeling(s, t, c, f, d) &&
+      ValidBuckets(s, t, e, d, max_height, buckets)
     }
 
-    function ResidualCapacity(v: nat, w: nat): nat
-      reads this, capacity, flow
-      requires Graph.ValidGraph(V, s, t)
-      requires FlowGraph.ValidFlowMatrixShape(V, flow)
-      requires FlowGraph.ValidCapacityMatrixShape(V, capacity)
-      requires FlowGraph.ValidPreflow(V, s, t, capacity, flow)
-      requires Graph.ValidNode(V, v) && Graph.ValidNode(V, w)
-    {
-      FlowGraph.ResidualCapacity(V, s, t, capacity, flow, v, w)
-    }
-
-    method Push(v: nat, w: nat)
+    method Push(v: Node, w: Node)
       requires Valid()
 
       // Preconditions for a valid push:
-      requires Graph.ValidNode(V, v) && Graph.ValidNode(V, w)   // v and w must be nodes in the Graph
-      requires !FlowGraph.NodeIsSourceOrSink(v, s, t)           // v cannot be equal to the source or sink
-      requires FlowGraph.NodeIsActive(V, v, excess)             // w must be active
-      requires ResidualCapacity(v, w) > 0                       // There must be pipe space
-      requires height[v] == height[w] + 1                       // Water must flow exactly one step downhill
+      requires v != s && v != t                 // v cannot be equal to the source or sink
+      requires e[v] > 0                         // v must be active
+      requires ResidualCapacity(c, f, v, w) > 0 // There must be pipe space
+      requires d[v] == d[w] + 1                 // Water must flow exactly one step downhill
 
       // postconditions
       ensures Valid()
 
-      modifies flow, excess, buckets
+      modifies this
     {
       // Calculate how much water we can push
-      var delta := excess[v];
-      var res_cap := ResidualCapacity(v, w);
+      var delta := e[v];
+      var res_cap := ResidualCapacity(c, f, v, w);
       if (res_cap < delta) {
         delta := res_cap;
       }
 
-      label BeforeMutation:
-      flow[v, w] := flow[v, w] + delta;
-      flow[w, v] := flow[w, v] - delta;
-      FlowGraph.LemmaFlowSumAfterPush@BeforeMutation(V, flow, v, w, delta, V);
+      ghost var f_old := f;
+      f := f[v := f[v][w := f[v][w] + delta]];
+      f := f[w := f[w][v := f[w][v] - delta]];
+      LemmaFlowSumAfterPush(f_old, f, v, w, delta, V - 1);
 
       // Store w's inital active state far later use
-      var old_w_active := FlowGraph.NodeIsActive(V, w, excess);
+      var old_w_active: bool := e[w] > 0;
 
-      excess[v] := excess[v] - delta;
-      excess[w] := excess[w] + delta;
-
-      if (excess[v] == 0) {
-        buckets[height[v]] := buckets[height[v]] - {v};
-      }
+      e := e[v := e[v] - delta];
+      e := e[w := e[w] + delta];
 
       // Update the Highest-Label Buckets
-      // If w was NOT active and w is not s or t, which implies it is active now, it enters the buckets.
-      if (!old_w_active && !FlowGraph.NodeIsSourceOrSink(w, s, t)) {
-        assert FlowGraph.NodeIsActive(V, w, excess);
+      // If v was active (precondition) and is now inactive, it leaves the buckets.
+      if (e[v] == 0) {
+        buckets := buckets[d[v] := buckets[d[v]] - {v}];
+      }
 
-        buckets[height[w]] := buckets[height[w]] + {w};
+      // If w was NOT active and w is not s or t, it enters the buckets.
+      if (!old_w_active && w != s && w != t) {
+        // w must be active now
+        assert e[w] > 0;
+
+        buckets := buckets[d[w] := buckets[d[w]] + {w}];
         // We don't need to update max_height here because water flows downhill
-        // height[w] is strictly less than height[v], so it cannot become the new max_height.
+        // d[w] is strictly less than d[v], so it cannot become the new max_height.
       }
     }
-
-    method Relabel(v: nat)
+    
+    method Relabel(v: Node)
       requires Valid()
 
       // Preconditions for a valid relabel:
-      requires Graph.ValidNode(V, v)                  // v must be a node in the Graph
-      requires !FlowGraph.NodeIsSourceOrSink(v, s, t) // v cannot be equal to the source or sink
-      requires FlowGraph.NodeIsActive(V, v, excess)   // v must be active
+      requires v != s && v != t // v cannot be equal to the source or sink
+      requires e[v] > 0         // v must be active
       // v cannot be relabeled if it has a downhill neighbor
-      requires forall w :: 0 <= w < V && ResidualCapacity(v, w) > 0 ==> height[v] <= height[w]
+      requires forall w: Node | (ResidualCapacity(c, f, v, w) > 0) :: d[v] <= d[w]
 
       // Postconditions
       ensures Valid()
 
-      modifies this, height, buckets
+      modifies this
     {
       // Find the lowest neighbor in the residual graph
       // We initialize minHeightNeighbour to an impossibly high value (2 * V)
@@ -143,46 +173,46 @@ module Algorithm {
       while (w < V)
         invariant 0 <= w <= V
         invariant minHeightNeighbour <= 2 * V
-        invariant forall k :: 0 <= k < w && ResidualCapacity(v, k) > 0 ==> minHeightNeighbour <= height[k]
+        invariant forall k: Node | k < w && (ResidualCapacity(c, f, v, k) > 0) :: minHeightNeighbour <= d[k]
 
         // Because v had no downhill neighbors, height[v] MUST be <= minHeightNeighbour.
         // invariant so that Dafny does not forget
-        invariant height[v] <= minHeightNeighbour
+        invariant d[v] <= minHeightNeighbour
       {
-        if (ResidualCapacity(v, w) > 0) {
-          if (height[w] < minHeightNeighbour) {
-            minHeightNeighbour := height[w];
+        if (ResidualCapacity(c, f, v, w) > 0) {
+          if (d[w] < minHeightNeighbour) {
+            minHeightNeighbour := d[w];
           }
         }
         w := w + 1;
       }
       // Assert minHeightNeighbour is actual minimum
-      assert forall k :: 0 <= k < V && ResidualCapacity(v, k) > 0 ==> minHeightNeighbour <= height[k];
+      assert forall w: Node | (ResidualCapacity(c, f, v, w) > 0) :: minHeightNeighbour <= d[w];
 
       // ------ Lemma's and proofs needed to prove height[v] < 2 * V after relabel ------
       // Prove a path to source exists from v
-      FlowGraph.Lemma_ActiveVertexHasPathToSource(V, s, t, capacity, flow, excess, v);
+      Lemma_ActiveVertexHasPathToSource(s, t, c, f, e, v);
       // Extract that path
-      ghost var pathToSource :| FlowGraph.IsSimpleResidualPath(V, s, t, capacity, flow, pathToSource) && pathToSource[0] == v && pathToSource[|pathToSource|-1] == s;
+      ghost var pathToSource :| IsSimpleResidualPath(c, f, pathToSource) && pathToSource[0] == v && pathToSource[|pathToSource|-1] == s;
 
       // Since v != s, the path has at least 2 nodes. Grab the next node in the path
       assert |pathToSource| >= 2;
       ghost var pathToSourceNextNode := pathToSource[1];
 
       // Because v and pathToSourceNextNode are connected on a residual path, there is residual capacity
-      assert FlowGraph.ResidualCapacity(V, s, t, capacity, flow, v, pathToSourceNextNode) > 0;
+      assert ResidualCapacity(c, f, v, pathToSourceNextNode) > 0;
 
       // get the remainder of the path (from pathToSourceNextNode to s)
       ghost var pathToSourceWithoutV := pathToSource[1..];
 
       // Apply length and telescoping height lemmas
-      Graph.Lemma_SimplePathHasBoundedLength(V, pathToSource);
+      Lemma_SimplePathHasBoundedLength(pathToSource);
       assert |pathToSource| <= V;
-      FlowGraph.Lemma_PathTelescopingHeight(V, s, t, capacity, flow, height, pathToSourceWithoutV);
-      assert height[pathToSourceNextNode] <= height[s] + |pathToSourceWithoutV| - 1;
-      assert height[pathToSourceNextNode] <= V + (V - 1) - 1; // Since height[s] == V && ((|pathToSource| <= V) ==> (|pathToSourceWithoutV| <= V - 1))
-      assert height[pathToSourceNextNode] <= 2 * V - 2;
-      assert height[pathToSourceNextNode] < 2 * V - 1;
+      Lemma_PathTelescopingHeight(s, t, c, f, d, pathToSourceWithoutV);
+      assert d[pathToSourceNextNode] <= d[s] + |pathToSourceWithoutV| - 1;
+      assert d[pathToSourceNextNode] <= V + (V - 1) - 1; // Since height[s] == V && ((|pathToSource| <= V) ==> (|pathToSourceWithoutV| <= V - 1))
+      assert d[pathToSourceNextNode] <= 2 * V - 2;
+      assert d[pathToSourceNextNode] < 2 * V - 1;
 
       // This proves there exists a path to source where height[pathToSourceNextNode] < 2 * V - 1
       // minHeightNeighbour is the neighbour on the path where the next node has the minimum height
@@ -191,14 +221,14 @@ module Algorithm {
       assert minHeightNeighbour + 1 < 2 * V;
       // ------------
 
-      buckets[height[v]] := buckets[height[v]] - {v};
+      buckets := buckets[d[v] := buckets[d[v]] - {v}];
 
-      height[v] := minHeightNeighbour + 1;
+      d := d[v := minHeightNeighbour + 1];
 
-      buckets[height[v]] := buckets[height[v]] + {v};
+      buckets := buckets[d[v] := buckets[d[v]] + {v}];
 
-      if (height[v] > max_height) {
-        max_height := height[v];
+      if (d[v] > max_height) {
+        max_height := d[v];
       }
     }
   }
