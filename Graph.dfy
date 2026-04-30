@@ -1,21 +1,15 @@
 module Graph {
-  predicate ValidNode(V: nat, v: nat)
-  {
-    v < V
-  }
+  type NodeCount = v: nat | v >= 2 witness 2
+  const V: NodeCount
 
-  predicate NodeSequenceHasNoDuplicates(p: seq<nat>) {
+  type Node = n: nat | n < V witness 0
+  type Path = p: seq<Node> | |p| > 0 witness [0]
+
+  predicate IsSimplePath(p: Path) {
     forall i, j :: 0 <= i < |p| && 0 <= j < |p| && i != j ==> p[i] != p[j]
   }
 
-  predicate ValidGraph(V: nat, s: nat, t: nat)
-  {
-    V >= 2 &&
-    ValidNode(V, s) && ValidNode(V, t) && s != t
-  }
-
-  lemma Lemma_SimplePathHasBoundedLength(V: nat, p: seq<nat>)
-    requires NodeSequenceHasNoDuplicates(p)
-    requires forall i :: 0 <= i < |p| ==> ValidNode(V, p[i])
+  lemma Lemma_SimplePathHasBoundedLength(p: Path)
+    requires IsSimplePath(p)
     ensures |p| <= V
 }
