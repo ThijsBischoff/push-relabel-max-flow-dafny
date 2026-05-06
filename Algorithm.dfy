@@ -49,7 +49,7 @@ module Algorithm {
           // invariant to prove skewSymmetryConstraint
           invariant forall i: Node, j: Node | i < v :: f[i][j] == 0
           invariant forall j: Node | j < w :: f[v][j] == 0
-          
+
           // invariant so Dafny does not forget
           invariant forall h: nat | 0 <= h < 2 * V :: |buckets[h]| == 0
         {
@@ -165,11 +165,12 @@ module Algorithm {
       // Preconditions for a valid push:
       requires v != s && v != t                 // v cannot be equal to the source or sink
       requires e[v] > 0                         // v must be active
-      requires ResidualCapacity(c, f, v, w) > 0 // There must be pipe space
+      requires ResidualCapacity(c, f, v, w) > 0 // There must be residual capacity to move
       requires d[v] == d[w] + 1                 // Water must flow exactly one step downhill
 
       // postconditions
       ensures ValidWithPreflow()
+      ensures max_height >= 0
 
       modifies this
     {
@@ -206,9 +207,6 @@ module Algorithm {
         // We don't need to update max_height here because water flows downhill
         // d[w] is strictly less than d[v], so it cannot become the new max_height.
       }
-
-      // assert so that Dafny knows
-      assert ValidBuckets(s, t, e, d, max_height, buckets);
     }
 
     method Relabel(v: Node)
@@ -222,6 +220,7 @@ module Algorithm {
 
       // Postconditions
       ensures ValidWithPreflow()
+      ensures max_height >= 0
 
       modifies this
     {
@@ -291,11 +290,88 @@ module Algorithm {
       }
     }
 
+    method Discharge(v: Node)
+      requires ValidWithPreflow()
+
+      requires e[v] > 0
+      requires v != s && v != t
+      
+      ensures ValidWithPreflow()
+      ensures e[v] == 0
+      ensures max_height >= 0
+
+      modifies this
+
+      decreases *
+    {
+      while (e[v] > 0)
+        invariant ValidWithPreflow()
+        invariant max_height >= 0
+
+        // decreases e[v] + (2*V - d[v])
+        decreases *
+      {
+        if (exists w: Node :: ResidualCapacity(c, f, v, w) > 0 && d[v] == d[w] + 1) {
+          var w: Node :| ResidualCapacity(c, f, v, w) > 0 && d[v] == d[w] + 1;
+          Push(v, w);
+        } else {
+          Relabel(v);
+        }
+      }
+
+      assert ValidWithPreflow();
+    }
+
     method CalculateMaxFlow()
       requires ValidWithPreflow()
       ensures ValidWithFlow()
-    {
 
+      modifies this
+
+      decreases *
+    {
+      while (max_height >= 0)
+        invariant ValidWithPreflow()
+
+        decreases *
+      {
+        while (|buckets[max_height]| > 0)
+          invariant ValidWithPreflow()
+          invariant 0 <= max_height < 2 * V
+
+          decreases *
+        {
+          var v: Node :| v in buckets[max_height];
+
+          Discharge(v);
+        }
+
+        max_height := max_height - 1;
+      }
+
+      // without this line dafny does not see ValidFlowConservationConstraint holds
+
+      /* start question */
+      // we have valid excess due to ValidWithPreflow() invariant
+      // assert ValidExcess(s, f, e);
+      // which means:
+      // assert forall v: Node | v != s :: e[v] == SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1);
+
+      // we also have zero excess:
+      // assert forall v: Node | v != s && v != t :: e[v] == 0;
+      // but this (which is ValidFlowConservationConstraint) does not hold
+      // assert forall v: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)} | (v != s && v != t) :: SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1) == 0;
+      /* end question */
+
+      assert forall v: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)} | (v != s && v != t) :: SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1) == e[v];
+      assert ValidFlowConservationConstraint(s, t, f);
+
+      // prove we have valid variables and a valid flow
+      assert ValidWithFlow();
+
+      // 2. Prove the Flow is Maximal!
+      Lemma_NoResidualPathFromST(s, t, c, f, d);
+      assert !(exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == s && p[|p|-1] == t);
     }
   }
 }

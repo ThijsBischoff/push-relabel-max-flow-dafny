@@ -18,8 +18,7 @@ module FlowGraph {
 
   predicate ValidFlowConservationConstraint(s: Node, t: Node, f: Flow)
   {
-    forall v: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)} ::
-      (v != s && v != t) ==> (SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1) == 0)
+    forall v: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)} | (v != s && v != t) :: (SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1) == 0)
   }
 
   // Computes the sum of flow into node 'v' on edges from (0, v) up to edge ('u', v)
