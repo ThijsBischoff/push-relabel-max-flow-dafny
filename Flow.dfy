@@ -55,4 +55,12 @@ module FlowGraph {
   {
     IsResidualPath(c, f, p) && IsSimplePath(p)
   }
+  
+  lemma Lemma_ZeroFlowHasZeroSum(f: Flow, v: Node, u: nat)
+    requires u < V
+    requires forall i: Node, j: Node :: f[i][j] == 0
+    ensures SumFlowInOnEdgesUpToEdgeUV(f, v, u) == 0
+  {
+    // automatically verified by Dafny
+  }
 }
