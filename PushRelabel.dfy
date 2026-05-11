@@ -95,13 +95,6 @@ module PushRelabel {
     }
   }
 
-  lemma Lemma_ActiveVertexHasPathToSource(s: Node, t: Node, c: Capacity, f: Flow, e: Excess, v: Node)
-    requires v != s && v != t
-    requires e[v] > 0
-    requires ValidPreflow(s, c, f)
-    requires ValidExcess(s, f, e)
-    ensures exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == v && p[|p|-1] == s
-
   lemma Lemma_PathTelescopingHeight(s: Node, t: Node, c: Capacity, f: Flow, d: Labeling, p: Path)
     requires |p| >= 1
     requires ValidPreflow(s, c, f)
@@ -109,6 +102,18 @@ module PushRelabel {
     requires IsResidualPath(c, f, p)
 
     ensures d[p[0]] <= d[p[|p| - 1]] + |p| - 1
+  {
+    if |p| == 1 {
+      // automatically verified by Dafny
+    } else {
+      var p' := p[..|p|-1]; // remove the last element
+      assert |p'| == |p| - 1;
+
+      Lemma_PathTelescopingHeight(s, t, c, f, d, p'); // show dafny the lemma holds for p'
+      
+      // the rest is automatically verified by Dafny
+    }
+  }
 
   lemma Lemma_NoResidualPathFromST(s: Node, t: Node, c: Capacity, f: Flow, d: Labeling)
     requires ValidPreflow(s, c, f)
@@ -130,4 +135,11 @@ module PushRelabel {
       assert false;
     }
   }
+
+  lemma Lemma_ActiveVertexHasPathToSource(s: Node, t: Node, c: Capacity, f: Flow, e: Excess, v: Node)
+    requires v != s && v != t
+    requires e[v] > 0
+    requires ValidPreflow(s, c, f)
+    requires ValidExcess(s, f, e)
+    ensures exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == v && p[|p|-1] == s
 }
