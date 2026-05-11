@@ -123,7 +123,7 @@ module PushRelabel {
       assert d[p[0]] <= d[p[|p|-1]] + |p| - 1;
       assert d[s] == V && d[t] == 0;
       assert V <= 0 + |p| - 1;
-      Lemma_SimplePathHasBoundedLength(p);
+      Lemma_SimplePathHasBoundedLength(p, V);
       assert |p| <= V;
       assert V <= V - 1;
 

@@ -271,7 +271,7 @@ module Algorithm {
       ghost var pathToSourceWithoutV := pathToSource[1..];
 
       // Apply length and telescoping height lemmas
-      Lemma_SimplePathHasBoundedLength(pathToSource);
+      Lemma_SimplePathHasBoundedLength(pathToSource, V);
       assert |pathToSource| <= V;
       Lemma_PathTelescopingHeight(s, t, c, f, d, pathToSourceWithoutV);
       assert d[pathToSourceNextNode] <= d[s] + |pathToSourceWithoutV| - 1;
