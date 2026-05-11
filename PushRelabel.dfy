@@ -19,7 +19,8 @@ module PushRelabel {
     requires ValidCapacityConstraint(c, f)
   {
     d[s] == V && d[t] == 0 &&
-    (forall v: Node, w: Node | (ResidualCapacity(c, f, v, w) > 0) :: d[v] <= d[w] + 1)
+    (forall v: Node, w: Node | (ResidualCapacity(c, f, v, w) > 0) :: d[v] <= d[w] + 1) &&
+    forall i: Node :: d[i] <= 2 * V
   }
 
   predicate ValidBuckets(s: Node, t: Node, e: Excess, d: Labeling, max_height: MaxHeight, buckets: Buckets)
@@ -45,6 +46,30 @@ module PushRelabel {
   predicate ValidPreflow(s: Node, c: Capacity, f: Flow)
   {
     ValidCapacityConstraint(c, f) && ValidSkewSymmetryConstraint(f) && ValidNonnegativityConstraint(s, f)
+  }
+
+  // used for proving termination
+  ghost function LabelingMetric(d: Labeling, n: nat): nat
+    requires n <= V
+    requires forall i: Node :: d[i] <= 2 * V
+    decreases n
+  {
+    if n == 0 then 0 else (2 * V - d[n-1]) + LabelingMetric(d, n-1)
+  }
+
+  // Proves to Dafny that if a single node goes UP, the overall metric goes DOWN
+  lemma Lemma_LabelingMetricDecreases(d_old: Labeling, d_new: Labeling, v: Node, n: nat)
+    requires n <= V
+    requires forall i: Node :: d_old[i] <= 2 * V
+    requires forall i: Node :: d_new[i] <= 2 * V
+    requires forall i: Node | i != v :: d_new[i] == d_old[i]
+    requires d_new[v] > d_old[v]
+
+    ensures LabelingMetric(d_new, n) <= LabelingMetric(d_old, n)
+    ensures v < n ==> LabelingMetric(d_new, n) < LabelingMetric(d_old, n)
+    decreases n
+  {
+    if n > 0 { Lemma_LabelingMetricDecreases(d_old, d_new, v, n-1); }
   }
 
   lemma Lemma_FlowSumAfterPush(f_old: Flow, f_new: Flow, v: Node, w: Node, delta: int, N: nat)

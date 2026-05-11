@@ -171,6 +171,10 @@ module Algorithm {
       // postconditions
       ensures ValidWithPreflow()
       ensures max_height >= 0
+      ensures max_height == old(max_height)
+      ensures e[v] < old(e[v])
+      ensures d == old(d)
+      ensures buckets[d[v]] == old(buckets)[d[v]] || buckets[d[v]] == old(buckets)[d[v]] - {v}
 
       modifies this
     {
@@ -221,6 +225,9 @@ module Algorithm {
       // Postconditions
       ensures ValidWithPreflow()
       ensures max_height >= 0
+      ensures e == old(e)
+      ensures d[v] > old(d[v])
+      ensures forall i: Node | i != v :: d[i] == old(d)[i]
 
       modifies this
     {
@@ -295,29 +302,47 @@ module Algorithm {
 
       requires e[v] > 0
       requires v != s && v != t
-      
+      requires d[v] == max_height
+
       ensures ValidWithPreflow()
       ensures e[v] == 0
       ensures max_height >= 0
 
-      modifies this
+      ensures LabelingMetric(d, V) <= LabelingMetric(old(d), V)
+      ensures d != old(d) ==> LabelingMetric(d, V) < LabelingMetric(old(d), V)
+      ensures d == old(d) ==> (max_height == old(max_height) && |buckets[max_height]| < |old(buckets)[max_height]|)
 
-      decreases *
+      modifies this
     {
+      ghost var start_d := d;
+      ghost var start_buckets := buckets;
+      ghost var start_max_height := max_height;
+
       while (e[v] > 0)
         invariant ValidWithPreflow()
         invariant max_height >= 0
 
-        // decreases e[v] + (2*V - d[v])
-        decreases *
+        invariant LabelingMetric(d, V) <= LabelingMetric(start_d, V)
+        invariant d != start_d ==> LabelingMetric(d, V) < LabelingMetric(start_d, V)
+        invariant d == start_d ==> max_height == start_max_height
+        invariant d == start_d ==> buckets[max_height] == start_buckets[max_height] || buckets[max_height] == start_buckets[max_height] - {v}
+
+        decreases e[v] + (2*V - d[v])
       {
         if (exists w: Node :: ResidualCapacity(c, f, v, w) > 0 && d[v] == d[w] + 1) {
           var w: Node :| ResidualCapacity(c, f, v, w) > 0 && d[v] == d[w] + 1;
           Push(v, w);
         } else {
+          ghost var d_before := d;
           Relabel(v);
+          Lemma_LabelingMetricDecreases(d_before, d, v, V);
         }
       }
+
+      assert d == start_d ==> buckets[max_height] == start_buckets[max_height] || buckets[max_height] == start_buckets[max_height] - {v};
+      // because v is no longer active it cannot still be in the bucket
+      assert d == start_d ==> buckets[max_height] == start_buckets[max_height] - {v};
+      assert d == start_d ==> |buckets[max_height]| < |start_buckets[max_height]|;
 
       assert ValidWithPreflow();
     }
@@ -327,51 +352,37 @@ module Algorithm {
       ensures ValidWithFlow()
 
       modifies this
-
-      decreases *
     {
       while (max_height >= 0)
         invariant ValidWithPreflow()
 
-        decreases *
+        decreases LabelingMetric(d, V), max_height
       {
         while (|buckets[max_height]| > 0)
           invariant ValidWithPreflow()
           invariant 0 <= max_height < 2 * V
 
-          decreases *
+          decreases LabelingMetric(d, V), max_height, |buckets[max_height]|
         {
           var v: Node :| v in buckets[max_height];
-
           Discharge(v);
         }
 
         max_height := max_height - 1;
       }
 
-      // without this line dafny does not see ValidFlowConservationConstraint holds
-
-      /* start question */
-      // we have valid excess due to ValidWithPreflow() invariant
-      // assert ValidExcess(s, f, e);
-      // which means:
-      // assert forall v: Node | v != s :: e[v] == SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1);
-
-      // we also have zero excess:
-      // assert forall v: Node | v != s && v != t :: e[v] == 0;
-      // but this (which is ValidFlowConservationConstraint) does not hold
-      // assert forall v: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)} | (v != s && v != t) :: SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1) == 0;
-      /* end question */
-
+      // show dafny that ValidFLowConservationConstraint holds
+      assert forall v: Node | v != s && v != t :: e[v] == 0;
       assert forall v: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)} | (v != s && v != t) :: SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1) == e[v];
       assert ValidFlowConservationConstraint(s, t, f);
 
-      // prove we have valid variables and a valid flow
+      // assert that we have valid variables and a valid flow
       assert ValidWithFlow();
 
       // 2. Prove the Flow is Maximal!
       Lemma_NoResidualPathFromST(s, t, c, f, d);
       assert !(exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == s && p[|p|-1] == t);
+      assert ValidFlow(s, t, c, f);
     }
   }
 }
