@@ -10,9 +10,26 @@ module PushRelabel {
   type Buckets = b: seq<set<Node>> | |b| == 2 * V witness seq(2 * V, _ => {})
   type MaxHeight = max_height: int | -1 <= max_height < 2 * V witness -1
 
+  // used for proving termination
+  ghost function LabelingMetric(d: Labeling, n: nat): nat
+    requires n <= V
+    requires forall i: Node :: d[i] <= 2 * V
+    decreases n
+  {
+    if n == 0 then 0 else (2 * V - d[n-1]) + LabelingMetric(d, n-1)
+  }
+
+  function TotalExcessOfSet(e: Excess, S: set<Node>, maxNode: nat): int
+    requires maxNode < V
+    decreases maxNode
+  {
+    (if maxNode in S then e[maxNode] else 0) +
+    (if maxNode == 0 then 0 else TotalExcessOfSet(e, S, maxNode - 1))
+  }
+
   predicate ValidExcess(s: Node, f: Flow, e: Excess)
   {
-    forall v: Node | v != s :: e[v] == SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)
+    forall v: Node | v != s :: e[v] == SumTotalFlowToNode(f, v, V - 1)
   }
 
   predicate ValidLabeling(s: Node, t: Node, c: Capacity, f: Flow, d: Labeling)
@@ -39,22 +56,13 @@ module PushRelabel {
 
   predicate ValidNonnegativityConstraint(s: Node, f: Flow)
   {
-    forall v: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)} | v != s ::
-      SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1) >= 0
+    forall v: Node {:trigger SumTotalFlowToNode(f, v, V - 1)} | v != s ::
+      SumTotalFlowToNode(f, v, V - 1) >= 0
   }
 
   predicate ValidPreflow(s: Node, c: Capacity, f: Flow)
   {
     ValidCapacityConstraint(c, f) && ValidSkewSymmetryConstraint(f) && ValidNonnegativityConstraint(s, f)
-  }
-
-  // used for proving termination
-  ghost function LabelingMetric(d: Labeling, n: nat): nat
-    requires n <= V
-    requires forall i: Node :: d[i] <= 2 * V
-    decreases n
-  {
-    if n == 0 then 0 else (2 * V - d[n-1]) + LabelingMetric(d, n-1)
   }
 
   // Proves to Dafny that if a single node goes UP, the overall metric goes DOWN
@@ -83,10 +91,10 @@ module PushRelabel {
     requires forall x: Node, y: Node | ((x, y) != (v, w) && (x, y) != (w, v)) :: f_new[x][y] == f_old[x][y]
 
     // ensures all nodes that are not touched have the SumFlowIn
-    ensures forall k: Node | k != v && k != w :: SumFlowInOnEdgesUpToEdgeUV(f_new, k, N) == SumFlowInOnEdgesUpToEdgeUV(f_old, k, N)
+    ensures forall k: Node | k != v && k != w :: SumTotalFlowToNode(f_new, k, N) == SumTotalFlowToNode(f_old, k, N)
     // ensures SumFlowIn is correctly updated for v and w
-    ensures SumFlowInOnEdgesUpToEdgeUV(f_new, v, N) == SumFlowInOnEdgesUpToEdgeUV(f_old, v, N) - (if N >= w then delta else 0)
-    ensures SumFlowInOnEdgesUpToEdgeUV(f_new, w, N) == SumFlowInOnEdgesUpToEdgeUV(f_old, w, N) + (if N >= v then delta else 0)
+    ensures SumTotalFlowToNode(f_new, v, N) == SumTotalFlowToNode(f_old, v, N) - (if N >= w then delta else 0)
+    ensures SumTotalFlowToNode(f_new, w, N) == SumTotalFlowToNode(f_old, w, N) + (if N >= v then delta else 0)
   {
     if N == 0 {
 
@@ -115,7 +123,7 @@ module PushRelabel {
     }
   }
 
-  lemma Lemma_NoResidualPathFromST(s: Node, t: Node, c: Capacity, f: Flow, d: Labeling)
+  lemma Lemma_NoResidualPathFromSToT(s: Node, t: Node, c: Capacity, f: Flow, d: Labeling)
     requires ValidPreflow(s, c, f)
     requires ValidLabeling(s, t, c, f, d)
     ensures !(exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == s && p[|p|-1] == t)
@@ -136,10 +144,67 @@ module PushRelabel {
     }
   }
 
-  lemma Lemma_ActiveVertexHasPathToSource(s: Node, t: Node, c: Capacity, f: Flow, e: Excess, v: Node)
+  lemma Lemma_TotalExcessOfSetIncludingActiveNodeIsStrictlyPositive(e: Excess, S: set<Node>, maxNode: nat, v: Node)
+    requires maxNode < V
+    requires v in S && e[v] > 0
+    requires forall u: Node | u in S :: e[u] >= 0
+    ensures if v <= maxNode then TotalExcessOfSet(e, S, maxNode) > 0 else TotalExcessOfSet(e, S, maxNode) >= 0
+    decreases maxNode
+  {
+    // automatic induction by Dafny
+  }
+
+  lemma Lemma_TotalExcessOfSetEqualsSumIncomingFlowOfSet(s: Node, e: Excess, f: Flow, S: set<Node>, maxNode: nat)
+    requires maxNode < V && ValidExcess(s, f, e) && s !in S
+    ensures TotalExcessOfSet(e, S, maxNode) == SumIncomingFlowOfSet(f, S, V - 1, maxNode)
+    decreases maxNode
+  {
+    if maxNode > 0 { Lemma_TotalExcessOfSetEqualsSumIncomingFlowOfSet(s, e, f, S, maxNode - 1); }
+    // intuition: Excess of a node is defined (in ValidExcess) as the sum of incomming flow, trivially this holds for a set of nodes as well.
+  }
+
+  lemma Lemma_ActiveNodeHasPathToSource(s: Node, t: Node, c: Capacity, f: Flow, e: Excess, v: Node)
     requires v != s && v != t
     requires e[v] > 0
-    requires ValidPreflow(s, c, f)
-    requires ValidExcess(s, f, e)
+    requires ValidPreflow(s, c, f) && ValidExcess(s, f, e)
     ensures exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == v && p[|p|-1] == s
+  {
+    var S := NodesReachableFrom(c, f, v);
+
+    // Trivially, v is reachable from itself
+    assert IsSimpleResidualPath(c, f, [v]);
+    assert v in S;
+
+    // Prove s in S by contradiction
+    assert s in S by {
+      if s !in S {
+        // All nodes in the reachable set must have non-negative excess
+        assert ValidNonnegativityConstraint(s, f);
+        forall u: Node | u in S ensures e[u] >= 0 {}
+
+        // Since v has positive excess and is in S, the entire set's excess is strictly positive (> 0)
+        Lemma_TotalExcessOfSetIncludingActiveNodeIsStrictlyPositive(e, S, V - 1, v);
+        assert TotalExcessOfSet(e, S, V - 1) > 0;
+
+        // Prove the Total Excess equals the Total Flow entering the set
+        Lemma_TotalExcessOfSetEqualsSumIncomingFlowOfSet(s, e, f, S, V - 1);
+        Lemma_SumIncomingFlowOfSetEqualsSumFlowFromAllNodesToSet(f, S, V - 1, V - 1);
+
+        // Decompose the Flow into Internal (From S to S) and External (From outside S to S)
+        Lemma_SumFlowFromAllNodesEqualsSumInternalFlowPlusSumExternalFlow(f, S, V - 1, V - 1);
+
+        // Prove internal flow cancels itself out to 0 (Skew Symmetry)
+        Lemma_TotalInternalFlowOfSetIsZero(f, S, V - 1);
+
+        // Prove external flow <= 0
+        Lemma_TotalExternalFlowOfReachableSetIsNonPositive(c, f, v, S, V - 1, V - 1);
+
+        // Excess (> 0) is equal to the Flow, which is equal to internal flow (0) + external flow (<= 0).
+        // 0 < (0 + (<= 0)) --> 0 < 0 --> contradiction
+        assert false;
+      }
+    }
+
+    assert exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == v && p[|p|-1] == s;
+  }
 }

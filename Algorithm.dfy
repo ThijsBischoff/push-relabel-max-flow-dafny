@@ -63,15 +63,15 @@ module Algorithm {
 
       // assert by lemma
       assert ValidNonnegativityConstraint(s, f) by {
-        forall v: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)} {
-          Lemma_ZeroFlowHasZeroSum(f, v, V - 1);
+        forall v: Node {:trigger SumTotalFlowToNode(f, v, V - 1)} {
+          Lemma_ZeroFlowEqualsZeroSumFlowInOfNode(f, v, V - 1);
         }
       }
 
       // needed to prove matching invariant on entry
-      assert forall i: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, i, V - 1)} | i != s :: SumFlowInOnEdgesUpToEdgeUV(f, i, V - 1) == 0 by {
-        forall v: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)} {
-          Lemma_ZeroFlowHasZeroSum(f, v, V - 1);
+      assert forall i: Node {:trigger SumTotalFlowToNode(f, i, V - 1)} | i != s :: SumTotalFlowToNode(f, i, V - 1) == 0 by {
+        forall v: Node {:trigger SumTotalFlowToNode(f, v, V - 1)} {
+          Lemma_ZeroFlowEqualsZeroSumFlowInOfNode(f, v, V - 1);
         }
       }
 
@@ -86,9 +86,9 @@ module Algorithm {
         invariant ValidNonnegativityConstraint(s, f)
 
         // for proving ValidExcess(s, f, e)
-        invariant forall i: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, i, V - 1)} | i != s && i >= v ::
-            SumFlowInOnEdgesUpToEdgeUV(f, i, V - 1) == 0
-        invariant forall i: Node | i != s && i < v :: e[i] == SumFlowInOnEdgesUpToEdgeUV(f, i, V - 1)
+        invariant forall i: Node {:trigger SumTotalFlowToNode(f, i, V - 1)} | i != s && i >= v ::
+            SumTotalFlowToNode(f, i, V - 1) == 0
+        invariant forall i: Node | i != s && i < v :: e[i] == SumTotalFlowToNode(f, i, V - 1)
 
         // invariant needed to prove f_old[s][i] == 0
         // which is needed for the call to Lemma_FlowSumAfterPush(f_old, f, s, v, delta, V - 1)
@@ -124,7 +124,7 @@ module Algorithm {
         ghost var d_old := d;
         d := d[v := 0];
 
-        assert SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1) == delta;
+        assert SumTotalFlowToNode(f, v, V - 1) == delta;
         ghost var e_old := e;
         e := e[v := delta];
 
@@ -256,7 +256,7 @@ module Algorithm {
 
       // ------ Lemma's and proofs needed to prove height[v] < 2 * V after relabel ------
       // Prove a path to source exists from v
-      Lemma_ActiveVertexHasPathToSource(s, t, c, f, e, v);
+      Lemma_ActiveNodeHasPathToSource(s, t, c, f, e, v);
       // Extract that path
       ghost var pathToSource :| IsSimpleResidualPath(c, f, pathToSource) && pathToSource[0] == v && pathToSource[|pathToSource|-1] == s;
 
@@ -373,14 +373,14 @@ module Algorithm {
 
       // show dafny that ValidFLowConservationConstraint holds
       assert forall v: Node | v != s && v != t :: e[v] == 0;
-      assert forall v: Node {:trigger SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1)} | (v != s && v != t) :: SumFlowInOnEdgesUpToEdgeUV(f, v, V - 1) == e[v];
+      assert forall v: Node {:trigger SumTotalFlowToNode(f, v, V - 1)} | (v != s && v != t) :: SumTotalFlowToNode(f, v, V - 1) == e[v];
       assert ValidFlowConservationConstraint(s, t, f);
 
       // assert that we have valid variables and a valid flow
       assert ValidWithFlow();
 
       // 2. Prove the Flow is Maximal!
-      Lemma_NoResidualPathFromST(s, t, c, f, d);
+      Lemma_NoResidualPathFromSToT(s, t, c, f, d);
       assert !(exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == s && p[|p|-1] == t);
       assert ValidFlow(s, t, c, f);
     }
