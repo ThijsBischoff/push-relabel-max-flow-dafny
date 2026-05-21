@@ -155,7 +155,9 @@ module PushRelabel {
   }
 
   lemma Lemma_TotalExcessOfSetEqualsSumIncomingFlowOfSet(s: Node, e: Excess, f: Flow, S: set<Node>, maxNode: nat)
-    requires maxNode < V && ValidExcess(s, f, e) && s !in S
+    requires maxNode < V
+    requires ValidExcess(s, f, e)
+    requires s !in S
     ensures TotalExcessOfSet(e, S, maxNode) == SumIncomingFlowOfSet(f, S, V - 1, maxNode)
     decreases maxNode
   {

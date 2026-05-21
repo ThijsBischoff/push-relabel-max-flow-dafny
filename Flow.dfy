@@ -137,7 +137,6 @@ module FlowGraph {
     decreases maxDest
   {
     if maxDest > 0 { Lemma_SumIncomingFlowOfSetEqualsSumFlowFromAllNodesToSet_Base(f, S, maxDest - 1); }
-    // intuition: Sum of incomming flow into the first node of the set is equal to flow from all nodes to the first node of the set.
   }
 
   lemma Lemma_SumIncomingFlowOfSetEqualsSumFlowFromAllNodesToSet_Step(f: Flow, S: set<Node>, maxSource: nat, maxDest: nat)
@@ -181,9 +180,6 @@ module FlowGraph {
     decreases maxSource
   {
     if maxSource > 0 { Lemma_InternalFlowStep(f, S, maxSource - 1, maxDest); }
-    // intuition: Sum of internal flow in set limited by maxSource and maxDest
-    // = sum of internal flow in set limited by maxSource and maxDest - 1
-    // + internal flow to maxDest limited by maxSource if maxDest is in the set
   }
 
   lemma Lemma_TotalInternalFlowOfSetIsZero(f: Flow, S: set<Node>, limit: nat)
@@ -215,8 +211,6 @@ module FlowGraph {
     decreases maxSource
   {
     if maxSource > 0 { Lemma_SumFlowFromAllNodesEqualsSumInternalFlowPlusSumExternalFlow(f, S, maxSource - 1, maxDest); }
-    // intuition: Sum of flow from all nodes to set
-    // equals sum of from from nodes outside of set to set + sum of flow from nodes inside of set to set.
   }
 
   lemma Lemma_FlowFromExternalNodeToReachableSetIsNonPositive(c: Capacity, f: Flow, v: Node, S: set<Node>, extNode: Node, limit: nat)
