@@ -73,7 +73,7 @@ module FlowGraph {
   ghost function NodesReachableFrom(c: Capacity, f: Flow, v: Node): set<Node>
     requires ValidCapacityConstraint(c, f)
   {
-    set w: Node | exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == v && p[|p|-1] == w
+    set w: Node {:trigger} | exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == v && p[|p|-1] == w
   }
 
   predicate ValidCapacityConstraint(c: Capacity, f: Flow)
