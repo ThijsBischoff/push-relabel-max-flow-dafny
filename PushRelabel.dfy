@@ -90,7 +90,7 @@ module PushRelabel {
     // all other edges have the same flow
     requires forall x: Node, y: Node | ((x, y) != (v, w) && (x, y) != (w, v)) :: f_new[x][y] == f_old[x][y]
 
-    // ensures all nodes that are not touched have the SumFlowIn
+    // ensures all nodes that are not touched have the same SumFlowIn
     ensures forall k: Node | k != v && k != w :: SumTotalFlowToNode(f_new, k, N) == SumTotalFlowToNode(f_old, k, N)
     // ensures SumFlowIn is correctly updated for v and w
     ensures SumTotalFlowToNode(f_new, v, N) == SumTotalFlowToNode(f_old, v, N) - (if N >= w then delta else 0)
@@ -118,18 +118,16 @@ module PushRelabel {
       assert |p'| == |p| - 1;
 
       Lemma_PathTelescopingHeight(s, t, c, f, d, p'); // show dafny the lemma holds for p'
-      
-      // the rest is automatically verified by Dafny
     }
   }
 
   lemma Lemma_NoResidualPathFromSToT(s: Node, t: Node, c: Capacity, f: Flow, d: Labeling)
     requires ValidPreflow(s, c, f)
     requires ValidLabeling(s, t, c, f, d)
-    ensures !(exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == s && p[|p|-1] == t)
+    ensures !SimpleResidualPathExists(c, f, s, t)
   {
     // Proof by contradiction
-    if exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == s && p[|p|-1] == t {
+    if SimpleResidualPathExists(c, f, s, t) {
       var p :| IsSimpleResidualPath(c, f, p) && p[0] == s && p[|p|-1] == t;
 
       Lemma_PathTelescopingHeight(s, t, c, f, d, p);
