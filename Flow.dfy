@@ -108,10 +108,10 @@ module FlowGraph {
     IsResidualPath(c, f, p) && IsSimplePath(p)
   }
 
-  ghost predicate SimpleResidualPathExists(c: Capacity, f: Flow, fromNode: Node, toNode: Node)
+  ghost predicate ResidualPathExists(c: Capacity, f: Flow, fromNode: Node, toNode: Node)
     requires ValidCapacityConstraint(c, f)
   {
-    exists p: Path :: IsSimpleResidualPath(c, f, p) && p[0] == fromNode && p[|p|-1] == toNode
+    exists p: Path :: IsResidualPath(c, f, p) && p[0] == fromNode && p[|p|-1] == toNode
   }
 
   lemma Lemma_ZeroFlowEqualsZeroSumFlowInOfNode(f: Flow, v: Node, u: nat)

@@ -124,14 +124,24 @@ module PushRelabel {
   lemma Lemma_NoResidualPathFromSToT(s: Node, t: Node, c: Capacity, f: Flow, d: Labeling)
     requires ValidPreflow(s, c, f)
     requires ValidLabeling(s, t, c, f, d)
-    ensures !SimpleResidualPathExists(c, f, s, t)
+    ensures !ResidualPathExists(c, f, s, t)
   {
     // Proof by contradiction
-    if SimpleResidualPathExists(c, f, s, t) {
-      var p :| IsSimpleResidualPath(c, f, p) && p[0] == s && p[|p|-1] == t;
+    if ResidualPathExists(c, f, s, t) {
+      var p: Path :| IsResidualPath(c, f, p) && p[0] == s && p[|p|-1] == t;
+
+      while !IsSimplePath(p)
+        invariant IsResidualPath(c, f, p)
+        invariant p[0] == s && p[|p|-1] == t
+        decreases |p|
+      {
+        var i, j :| 0 <= i < j < |p| && p[i] == p[j];
+        p := p[..i] + p[j..];
+      }
+      assert IsSimplePath(p);
 
       Lemma_PathTelescopingHeight(s, t, c, f, d, p);
-      assert d[p[0]] <= d[p[|p|-1]] + |p| - 1;
+      assert d[p[0]] <= d[p[|p| - 1]] + |p| - 1;
       assert d[s] == V && d[t] == 0;
       assert V <= 0 + |p| - 1;
       Lemma_SimplePathHasBoundedLength(p, V);

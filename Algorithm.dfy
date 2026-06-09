@@ -314,7 +314,7 @@ module Algorithm {
       requires ValidWithPreflow()
 
       ensures ValidWithFlow()
-      ensures !SimpleResidualPathExists(c, f, s, t)
+      ensures !ResidualPathExists(c, f, s, t)
 
       modifies this
     {
