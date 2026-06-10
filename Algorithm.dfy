@@ -271,21 +271,20 @@ module Algorithm {
       ensures e[v] == 0
       ensures max_height >= old(max_height)
 
-      ensures LabelingMetric(d, V) <= LabelingMetric(old(d), V)
       ensures d != old(d) ==> LabelingMetric(d, V) < LabelingMetric(old(d), V)
-      ensures d == old(d) ==> (max_height == old(max_height) && |buckets[max_height]| < |old(buckets)[max_height]|)
+      ensures d == old(d) ==> max_height == old(max_height)
+      ensures d == old(d) ==> |buckets[max_height]| < |old(buckets)[max_height]|
 
       modifies this
     {
       ghost var start_d := d;
-      ghost var start_buckets := buckets;
       ghost var start_max_height := max_height;
+      ghost var start_buckets := buckets;
 
       while (e[v] > 0)
         invariant ValidWithPreflow()
         invariant max_height >= old(max_height)
 
-        invariant LabelingMetric(d, V) <= LabelingMetric(start_d, V)
         invariant d != start_d ==> LabelingMetric(d, V) < LabelingMetric(start_d, V)
         invariant d == start_d ==> max_height == start_max_height
         invariant d == start_d ==> buckets[max_height] == start_buckets[max_height] || buckets[max_height] == start_buckets[max_height] - {v}
@@ -323,11 +322,15 @@ module Algorithm {
 
         decreases LabelingMetric(d, V), max_height
       {
+        ghost var old_labeling_metric := LabelingMetric(d, V);
+        ghost var old_max_height := max_height;
+
         while (|buckets[max_height]| > 0)
           invariant ValidWithPreflow()
           invariant 0 <= max_height < 2 * V
 
-          decreases LabelingMetric(d, V), max_height, |buckets[max_height]|
+          invariant old_labeling_metric == LabelingMetric(d, V) ==> max_height == old_max_height
+          decreases LabelingMetric(d, V), |buckets[max_height]|
         {
           var v: Node :| v in buckets[max_height];
           Discharge(v);
